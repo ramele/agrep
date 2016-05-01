@@ -4,34 +4,42 @@
 "
 " ** This plugin is under development **
 "
+" Features:
+"  - Run grep at the background and get the live stream of results into Vim.
+"    The results will be displayed in a special window as soon as they are
+"    found, you can keep working or start exploring the list immediately.
+"  - Jump to the exact location of a match - line and column.
+"  - Don't miss anything - Agrep can handle multiple matches in a line.
+"  - Matched text is highlighted.
+"
 " Usage: Agrep takes the same command line arguments as the shell's grep, for
 " example:
+"
 " :Agrep -r 'foo.*bar' ~/my_project
 " 
 " It uses -nH flags by default so you don't need to specify them explicitly.
 "
-" Each match is available to Vim as soon as it is discovered. You don't need
-" to wait for the entire search to complete.
-"
-" The results are displayed in a special window (for now). You can change this
-" and load the results directly to the quickfix list (agrep_use_qf) but it is
-" slower for long lists, especially if the quickfix window is opened while it
-" is being updated. You can load the results to the quickfix list any time by
-" running :Agrepsetqf. It is useful when you edit the files while exploring
-" the results.
+" The results are displayed in a special window which is not the quickfix
+" window by default, at least for now. You can change this and load the
+" results directly to the quickfix list but it is slower for long lists,
+" especially if the quickfix window is opened while the search is active. You
+" can load the results to the quickfix list any time by running :Agrepsetqf.
+" It is useful when you edit the files while navigating the list.
 " 
-" The following commands can be used to navigate the search results:
+" The following commands can be used to navigate the search results (non
+" quickfix mode):
 " - AA [nr]
 " - Anext
 " - Aprev
 " These commands are similar to the corresponding quickfix commands (cc, cn,
 " cp). Hitting <Enter> or double-clicking the mouse on a match in the Agrep
-" window will take you to the match location as well.
-" Use :Agrepstop to kill the search and its grep process.
-
+" window will take you to the match location as well. Use :Agrepstop to kill
+" the search and its grep process.
+"
 " TODO:
 " - Handle tab switching while searching
-" - Add filter results command
+" - Update navigation commands (if quickfix will not be default eventually)
+" - Add :Agrepfilter command
 "
 if v:version < 704 || v:version == 704 && !has("patch1750")
     echoerr 'Agrep requires Vim 7.4.1750 or later!'
@@ -45,9 +53,9 @@ command!          Aprev      call <SID>goto_match(s:cur_match-1)
 command!          Agrepsetqf call s:set_qf()
 command!          Agrepstop  call s:stop()
 
-" global options:
-if !exists('agrep_win_highet')
-    let agrep_win_highet = 15
+" Global options:
+if !exists('agrep_win_height')
+    let agrep_win_height = 15
 endif
 if !exists('agrep_use_qf')
     let agrep_use_qf = 0
@@ -81,15 +89,15 @@ func! s:back_from_buf()
 endfunc
 
 func! Agrep_status()
-    return '[Agrep] *'.(g:agrep_active ? 'Active' : 'Done').'*  '.s:regexp.
-		\ '%=%-14{"'.(s:cur_match ? s:cur_match.' of ' : '').s:n_matches.'"}%3p%%'
+    return '[Agrep] *' . s:agrep_status . '*  ' . s:regexp .
+		\ '%=%-14{"' . (s:cur_match . ' of ' . s:n_matches) . '"}%3p%%'
 endfunc
 
 func! s:open_agrep_window()
     let base_win = winnr()
     let s:bufnr = bufnr('Agrep')
     if s:bufnr < 0
-	exe 'bo' g:agrep_win_highet 'new Agrep'
+	exe 'bo' g:agrep_win_height 'new Agrep'
 	let s:bufnr = bufnr('%')
 	setlocal buftype=nofile bufhidden=hide
 	setlocal conceallevel=3 concealcursor=nvic
@@ -112,7 +120,7 @@ endfunc
 
 func! Agrep(args)
     let s:regexp = matchstr(a:args, '\v^(-\S+\s*)*\zs(".*"|''.*''|\S*)')
-    let [g:agrep_active, s:n_matches, s:cur_match, s:columns] = [1, 0, 0, []]
+    let [s:agrep_status, s:n_matches, s:cur_match, s:columns] = ['Active', 0, 0, []]
 
     let grep_cmd = s:grep_cmd . ' ' . g:agrep_default_flags . ' ' . a:args
 
@@ -167,7 +175,9 @@ func! Agrep_final_close(timer)
 	call setline(1, printf('Done. %d results:', s:n_matches))
 	call s:back_from_buf()
     endif
-    let g:agrep_active = 0
+    if s:agrep_status == 'Active'
+	let s:agrep_status = 'Done'
+    endif
 endfunc
 
 func! <SID>goto_match(n)
@@ -205,5 +215,8 @@ func! s:set_qf()
 endfunc
 
 func! s:stop()
-    call job_stop(s:agrep_job)
+    if s:agrep_status == 'Active'
+	let s:agrep_status = 'Stopped'
+	call job_stop(s:agrep_job)
+    endif
 endfunc
