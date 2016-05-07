@@ -8,9 +8,9 @@ __Features:__
 - Run grep at the background and get the live stream of results into Vim.
   The results will be displayed in a special window as soon as they are
   found, you can keep working or start exploring the list immediately.
-- Jump to the exact location of a match (line and column).
-- Don't miss anything - Agrep handles multiple matches in a line.
-- Matched text is highlighted.
+- Jump to the exact location of a match (line and column. Also for multiple
+  matches in a line).
+- Highlighting the matching text.
 
 ![Agrep](http://i.imgur.com/epffEDH.gif)
 
@@ -22,7 +22,7 @@ Agrep takes the same command line arguments as the shell's grep, for example:
 It uses -nH flags by default so you don't need to specify them explicitly.
 
 The results are displayed in a special window which is not the quickfix
-window by default, at least for now. You can change this and load the
+window by default (at least for now). You can change this and load the
 results directly to the quickfix list but it is slower for long lists,
 especially if the quickfix window is opened while the search is active. You
 can load the results to the quickfix list any time by running :Agrepsetqf.
@@ -35,6 +35,18 @@ quickfix mode):
 - Aprev
 
 These commands are similar to the corresponding quickfix commands (cc, cn,
-cp). Hitting <Enter> or double-clicking the mouse on a match in the Agrep
+cp). Hitting Enter or double-clicking the mouse on a match in the Agrep
 window will take you to the match location as well.
 Use :Agrepstop to kill the search and its grep process.
+
+__Options:__
+ 
+    agrep_default_flags : default '-I'
+    agrep_win_height    : default 15
+    agrep_use_qf        : default 0 (change it to 1 if you want Agrep to add the results directly to the quickfix list)
+
+__TODO:__
+
+- Handle tab switching while searching
+- Update navigation commands (if quickfix will not be default eventually)
+- Add :Agrepfilter command
