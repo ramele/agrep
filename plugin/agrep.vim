@@ -8,9 +8,9 @@ if v:version < 704 || v:version == 704 && !has("patch1750")
 endif
 
 command! -nargs=+ -complete=file Agrep call Agrep(<q-args>)
-command! -nargs=1 AA         call <SID>goto_match(<args>)
-command!          Anext      call <SID>goto_match(s:cur_match+1)
-command!          Aprev      call <SID>goto_match(s:cur_match-1)
+command! -nargs=1 AA         call s:goto_match(<args>)
+command!          Anext      call s:goto_match(s:cur_match+1)
+command!          Aprev      call s:goto_match(s:cur_match-1)
 command!          Agrepsetqf call s:set_qf()
 command!          Agrepstop  call s:stop()
 
@@ -25,29 +25,10 @@ if !exists('agrep_default_flags')
     let agrep_default_flags = '-I'
 endif
 if !exists('agrep_conceal')
-    let agrep_conceal = nr2char(30)
+    let agrep_conceal = nr2char(176)
 endif
 
 let s:grep_cmd = 'GREP_COLORS="mt=01:sl=:fn=:ln=:se=" grep --color=always --line-buffered -nH'
-
-func! s:move_to_buf(bufnr)
-    let s:saved_ei = &eventignore
-    set eventignore=all
-    let s:base_win = winnr()
-    let s:buf_win = bufwinnr(a:bufnr)
-    if s:base_win != s:buf_win
-	exe s:buf_win 'wincmd w'
-    endif
-    setlocal modifiable
-endfunc
-
-func! s:back_from_buf()
-    setlocal nomodifiable
-    if s:base_win != s:buf_win
-	exe s:base_win 'wincmd w'
-    endif
-    let &eventignore = s:saved_ei
-endfunc
 
 func! Agrep_status()
     return '[Agrep] *' . s:agrep_status . '*  ' . s:regexp .
@@ -65,23 +46,27 @@ func! s:open_agrep_window()
 	setlocal filetype=agrep
 	setlocal statusline=%!Agrep_status()
 
-	map <silent> <buffer> <CR>		:call <SID>goto_match(line('.')-1)<CR>
-	map <silent> <buffer> <2-LeftMouse>	:call <SID>goto_match(line('.')-1)<CR>
+	map <silent> <buffer> <CR>	    :call <SID>goto_match(line('.')-1)<CR>
+	map <silent> <buffer> <2-LeftMouse> :call <SID>goto_match(line('.')-1)<CR>
     elseif bufwinnr(s:bufnr) < 0
 	exe 'bo sb' s:bufnr
     else
 	exe bufwinnr(s:bufnr) 'wincmd w'
     endif
-    setlocal modifiable
+    call clearmatches()
     silent %d _
-    call setline(1, 'Searching...')
-    setlocal nomodifiable
+    call setline(1, 'grep ' . g:agrep_default_flags . ' ' . s:args .':')
+    call cursor(1, col('$')) " avoid scrolling when using out_io buffer
     if winnr() != base_win | wincmd p | endif
 endfunc
 
 func! Agrep(args)
-    let s:regexp = matchstr(a:args, '\v^(-\S+\s*)*\zs(".*"|''.*''|\S*)')
-    let [s:agrep_status, s:n_matches, s:cur_match, s:columns] = ['Active', 0, 0, []]
+    let s:regexp       = matchstr(a:args, '\v^(-\S+\s*)*\zs(".*"|''.*''|\S*)')
+    let s:args         = a:args
+    let s:agrep_status = 'Active'
+    let s:n_matches    = 0
+    let s:cur_match    = 0
+    let s:columns      = []
 
     let grep_cmd = s:grep_cmd . ' ' . g:agrep_default_flags . ' ' . a:args
 
@@ -90,6 +75,11 @@ func! Agrep(args)
     else
 	call s:open_agrep_window()
     endif
+
+    " update agrep buffer through a pipe, since there is no way to change
+    " other buffers in VimL
+    let s:lb_pipe_job = job_start('cat', {'out_io': 'buffer', 'out_buf': s:bufnr})
+    let s:channel = job_getchannel(s:lb_pipe_job)
 
     let s:agrep_job = job_start(['/bin/bash', '-c', grep_cmd], {
 		\ 'out_cb': 'Agrep_cb', 'close_cb': 'Agrep_close_cb'})
@@ -109,17 +99,15 @@ func! Agrep_cb(channel, msg)
 		call setqflist([{'filename': ml[1], 'lnum': ml[2], 'col': len+1,
 			    \ 'text': substitute(join(sp, ''), '^\s\+', '', '')}], 'a')
 	    else
-		call add(s:columns, len+1)
-		call s:move_to_buf(s:bufnr)
-		call setline(s:n_matches+1, printf('%s:%d: %s', ml[1], ml[2],
+		call add(s:columns, len+1) " TODO use inline hidden columns
+		call ch_sendraw(s:channel, printf("%s:%d: %s\n", ml[1], ml[2],
 			    \ substitute(join(sp, g:agrep_conceal), '^\s\+', '', '')))
-		call setline(1, printf('Searching... %d results:', s:n_matches))
-		call s:back_from_buf()
 	    endif
 	endif
 	let len += len(s)
 	let is_match = !is_match
     endfor
+    call setbufvar('Agrep', '&stl', '%!Agrep_status()')
 endfunc
 
 func! Agrep_close_cb(channel)
@@ -131,32 +119,30 @@ func! Agrep_final_close(timer)
     if g:agrep_use_qf
 	redr
 	echo 'Done!'
-    else
-	call s:move_to_buf(s:bufnr)
-	call setline(1, printf('Done. %d results:', s:n_matches))
-	call s:back_from_buf()
     endif
     if s:agrep_status == 'Active'
 	let s:agrep_status = 'Done'
     endif
+    call setbufvar('Agrep', '&stl', '%!Agrep_status()')
+    call job_stop(s:lb_pipe_job)
 endfunc
 
-func! <SID>goto_match(n)
+func! s:goto_match(n)
     if a:n < 1 || a:n > s:n_matches | return | endif
-    if bufwinnr(s:bufnr) > 0
-	call s:move_to_buf(s:bufnr)
+    let winnr = bufwinnr(s:bufnr)
+    if winnr > 0
+	exe winnr 'wincmd w'
+
 	if exists('b:current_syntax')
 	    call clearmatches()
 	    call matchaddpos('AgrepHeader', [a:n+1])
 	endif
+
 	call cursor(a:n+1, col('.'))
-	call s:back_from_buf()
-	if bufnr('%') == s:bufnr
-	    if winnr('$') > 1
-		wincmd p
-	    else
-		new
-	    endif
+	if winnr('$') > 1
+	    wincmd p
+	else
+	    new
 	endif
     endif
     let ml = matchlist(getbufline(s:bufnr, a:n+1)[0], '\v^([^:]*):(\d*)')
