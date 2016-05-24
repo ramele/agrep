@@ -76,10 +76,12 @@ func! Agrep(args)
 	call s:open_agrep_window()
     endif
 
-    " update agrep buffer through a pipe, since there is no way to change
-    " other buffers in VimL
-    let s:lb_pipe_job = job_start('cat', {'out_io': 'buffer', 'out_buf': s:bufnr})
-    let s:channel = job_getchannel(s:lb_pipe_job)
+    if !g:agrep_use_qf
+	" update agrep buffer through a pipe, since there is no way to change
+	" other buffers in VimL
+	let s:lb_pipe_job = job_start('cat', {'out_io': 'buffer', 'out_buf': s:bufnr})
+	let s:channel = job_getchannel(s:lb_pipe_job)
+    endif
 
     let s:agrep_job = job_start(['/bin/bash', '-c', grep_cmd], {
 		\ 'out_cb': 'Agrep_cb', 'close_cb': 'Agrep_close_cb'})
@@ -102,12 +104,12 @@ func! Agrep_cb(channel, msg)
 		call add(s:columns, len+1) " TODO use inline hidden columns
 		call ch_sendraw(s:channel, printf("%s:%d: %s\n", ml[1], ml[2],
 			    \ substitute(join(sp, g:agrep_conceal), '^\s\+', '', '')))
+		call setbufvar('Agrep', '&stl', '%!Agrep_status()')
 	    endif
 	endif
 	let len += len(s)
 	let is_match = !is_match
     endfor
-    call setbufvar('Agrep', '&stl', '%!Agrep_status()')
 endfunc
 
 func! Agrep_close_cb(channel)
@@ -116,15 +118,16 @@ func! Agrep_close_cb(channel)
 endfunc
 
 func! Agrep_final_close(timer)
-    if g:agrep_use_qf
-	redr
-	echo 'Done!'
-    endif
     if s:agrep_status == 'Active'
 	let s:agrep_status = 'Done'
     endif
-    call setbufvar('Agrep', '&stl', '%!Agrep_status()')
-    call job_stop(s:lb_pipe_job)
+    if g:agrep_use_qf
+	redr
+	echo 'Done!'
+    else
+	call setbufvar('Agrep', '&stl', '%!Agrep_status()')
+	call job_stop(s:lb_pipe_job)
+    endif
 endfunc
 
 func! s:goto_match(n)
