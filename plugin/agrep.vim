@@ -2,8 +2,8 @@
 " Last Change:	2016 Apr 29
 " Maintainer:	Ramel Eshed <ramelo1@gmail.com>
 
-if v:version < 704 || v:version == 704 && !has("patch1750")
-    echoerr 'Agrep requires Vim 7.4.1750 or later!'
+if v:version < 704 || v:version == 704 && !has("patch1857")
+    echoerr 'Agrep requires Vim 7.4.1857 or later!'
     fini
 endif
 
@@ -54,13 +54,16 @@ func! s:open_agrep_window()
 	exe bufwinnr(s:bufnr) 'wincmd w'
     endif
     call clearmatches()
+    setlocal modifiable
     silent %d _
     call setline(1, 'grep ' . g:agrep_default_flags . ' ' . s:args .':')
+    setlocal nomodifiable
     call cursor(1, col('$')) " avoid scrolling when using out_io buffer
     if winnr() != base_win | wincmd p | endif
 endfunc
 
 func! Agrep(args)
+    let s:rt = reltime()
     let s:regexp       = matchstr(a:args, '\v^(-\S+\s*)*\zs(".*"|''.*''|\S*)')
     let s:args         = a:args
     let s:agrep_status = 'Active'
@@ -74,12 +77,11 @@ func! Agrep(args)
 	call setqflist([])
     else
 	call s:open_agrep_window()
-    endif
 
-    if !g:agrep_use_qf
 	" update agrep buffer through a pipe, since there is no way to change
 	" other buffers in VimL
-	let s:lb_pipe_job = job_start('cat', {'out_io': 'buffer', 'out_buf': s:bufnr})
+	let s:lb_pipe_job = job_start('cat', {
+		    \ 'out_io': 'buffer', 'out_buf': s:bufnr, 'out_modifiable': 0})
 	let s:channel = job_getchannel(s:lb_pipe_job)
     endif
 
@@ -101,7 +103,7 @@ func! Agrep_cb(channel, msg)
 		call setqflist([{'filename': ml[1], 'lnum': ml[2], 'col': len+1,
 			    \ 'text': substitute(join(sp, ''), '^\s\+', '', '')}], 'a')
 	    else
-		call add(s:columns, len+1) " TODO use inline hidden columns
+		call add(s:columns, len+1)
 		call ch_sendraw(s:channel, printf("%s:%d: %s\n", ml[1], ml[2],
 			    \ substitute(join(sp, g:agrep_conceal), '^\s\+', '', '')))
 		call setbufvar('Agrep', '&stl', '%!Agrep_status()')
@@ -128,6 +130,7 @@ func! Agrep_final_close(timer)
 	call setbufvar('Agrep', '&stl', '%!Agrep_status()')
 	call job_stop(s:lb_pipe_job)
     endif
+    " echo reltime(s:rt)
 endfunc
 
 func! s:goto_match(n)
