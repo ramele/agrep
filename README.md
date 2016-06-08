@@ -23,9 +23,8 @@ It uses -nH flags by default so you don't need to specify them explicitly.
 
 The results are displayed in a special window which is not the quickfix
 window by default (at least for now). You can change this and load the
-results directly to the quickfix list but it is slower for long lists,
-especially if the quickfix window is opened while the search is active. You
-can load the results to the quickfix list any time by running :Agrepsetqf.
+results directly to the quickfix list but it is slower for very long lists.
+You can load the results to the quickfix list any time by running :Agrepsetqf.
 It is useful when you edit the files while navigating the list.  
 The following commands can be used to navigate the search results (non
 quickfix mode):

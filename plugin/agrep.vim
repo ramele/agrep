@@ -1,9 +1,8 @@
 " Agrep - Asynchronous grep plugin for Vim
-" Last Change:	2016 Apr 29
 " Maintainer:	Ramel Eshed <ramelo1@gmail.com>
 
-if v:version < 704 || v:version == 704 && !has("patch1857")
-    echoerr 'Agrep requires Vim 7.4.1857 or later!'
+if v:version < 704 || v:version == 704 && !has("patch1907")
+    echoerr 'Agrep requires Vim 7.4.1907 or later!'
     fini
 endif
 
@@ -69,49 +68,38 @@ func! Agrep(args)
     let s:agrep_status = 'Active'
     let s:n_matches    = 0
     let s:cur_match    = 0
-    let s:columns      = []
 
-    let grep_cmd = s:grep_cmd . ' ' . g:agrep_default_flags . ' ' . a:args
+    if !exists('s:agrep_perl')
+	let s:agrep_perl = globpath(&rtp, 'perl/agrep.pl')
+    endif
+
+    let grep_cmd = s:grep_cmd . ' ' . g:agrep_default_flags . ' ' . a:args . ' | ' . s:agrep_perl
 
     if g:agrep_use_qf
+	let s:saved_efm = &efm
+	set efm=%f:%l\\,%c:%m
+
 	call setqflist([])
+
+	let s:agrep_job = job_start(['/bin/bash', '-c', grep_cmd], {
+		    \ 'out_cb': 'Agrep_cb_qf', 'close_cb': 'Agrep_close_cb'})
     else
 	call s:open_agrep_window()
 
-	" update agrep buffer through a pipe, since there is no way to change
-	" other buffers in VimL
-	let s:lb_pipe_job = job_start('cat', {
-		    \ 'out_io': 'buffer', 'out_buf': s:bufnr, 'out_modifiable': 0})
-	let s:channel = job_getchannel(s:lb_pipe_job)
+	let s:agrep_job = job_start(['/bin/bash', '-c', grep_cmd], {
+		    \ 'out_io': 'buffer', 'out_buf': s:bufnr, 'out_modifiable': 0,
+		    \ 'out_cb': 'Agrep_cb', 'close_cb': 'Agrep_close_cb'})
     endif
-
-    let s:agrep_job = job_start(['/bin/bash', '-c', grep_cmd], {
-		\ 'out_cb': 'Agrep_cb', 'close_cb': 'Agrep_close_cb'})
 endfunc
 
 func! Agrep_cb(channel, msg)
-    let ml = matchlist(a:msg, '\v^([^:]*):(\d*):(.*)')
-    if !len(ml) | return | endif
+    let s:n_matches += 1
+    call setbufvar('Agrep', '&stl', '%!Agrep_status()')
+endfunc
 
-    let sp = split(ml[3], '\V\e[\(01\)\?m\e[K', 1)
-    let len = 0
-    let is_match = 0
-    for s in sp
-	if is_match
-	    let s:n_matches += 1
-	    if g:agrep_use_qf
-		call setqflist([{'filename': ml[1], 'lnum': ml[2], 'col': len+1,
-			    \ 'text': substitute(join(sp, ''), '^\s\+', '', '')}], 'a')
-	    else
-		call add(s:columns, len+1)
-		call ch_sendraw(s:channel, printf("%s:%d: %s\n", ml[1], ml[2],
-			    \ substitute(join(sp, g:agrep_conceal), '^\s\+', '', '')))
-		call setbufvar('Agrep', '&stl', '%!Agrep_status()')
-	    endif
-	endif
-	let len += len(s)
-	let is_match = !is_match
-    endfor
+func! Agrep_cb_qf(channel, msg)
+    let s:n_matches += 1
+    cadde a:msg
 endfunc
 
 func! Agrep_close_cb(channel)
@@ -124,13 +112,13 @@ func! Agrep_final_close(timer)
 	let s:agrep_status = 'Done'
     endif
     if g:agrep_use_qf
+	let &efm = s:saved_efm
 	redr
 	echo 'Done!'
     else
 	call setbufvar('Agrep', '&stl', '%!Agrep_status()')
-	call job_stop(s:lb_pipe_job)
     endif
-    " echo reltime(s:rt)
+    echo reltime(s:rt)
 endfunc
 
 func! s:goto_match(n)
@@ -151,18 +139,18 @@ func! s:goto_match(n)
 	    new
 	endif
     endif
-    let ml = matchlist(getbufline(s:bufnr, a:n+1)[0], '\v^([^:]*):(\d*)')
+    let ml = matchlist(getbufline(s:bufnr, a:n+1)[0], '\v^([^:]*):(\d*),(\d*)')
     exe 'e' ml[1]
-    call cursor(ml[2], s:columns[a:n-1])
+    call cursor(ml[2], ml[3])
     let s:cur_match = a:n
 endfunc
 
 func! s:set_qf()
     let qf = []
     for i in range(1, s:n_matches)
-	let ml = matchlist(getbufline(s:bufnr, i+1)[0], '\v^([^:]*):(\d*):(.*)')
-	call add(qf, {'filename': ml[1], 'lnum': ml[2], 'col': s:columns[i-1],
-		    \ 'text': substitute(ml[3], g:agrep_conceal, '', 'g')})
+	let ml = matchlist(getbufline(s:bufnr, i+1)[0], '\v^([^:]*):(\d*),(\d*):(.*)')
+	call add(qf, {'filename': ml[1], 'lnum': ml[2], 'col': ml[3],
+		    \ 'text': substitute(ml[4], g:agrep_conceal, '', 'g')})
     endfor
     call setqflist(qf)
 endfunc
