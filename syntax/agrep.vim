@@ -10,7 +10,7 @@ endif
 
 syn match	AgrepFileName	"^[^:]\+"	nextgroup=AgrepSeparator
 syn match	AgrepSeparator	":"		nextgroup=AgrepLineNr contained
-syn match	AgrepLineNr	"\d\+"		contained
+syn match	AgrepLineNr	"[^:]\+"	contained
 syn match	AgrepHeader	"\%1l.\+"
 exe printf('syn match AgrepConceal "%s" conceal contained', agrep_conceal)
 exe printf('syn match AgrepMatch "%s[^%s]*%s" contains=AgrepConceal', agrep_conceal, agrep_conceal, agrep_conceal)
@@ -19,7 +19,10 @@ exe printf('syn match AgrepMatch "%s[^%s]*%s" contains=AgrepConceal', agrep_conc
 hi def link AgrepFileName	Directory
 hi def link AgrepLineNr		LineNr
 hi def link AgrepMatch		Special
-hi def AgrepHeader term=underline cterm=underline gui=underline
+hi def AgrepUnderline term=underline cterm=underline gui=underline
+hi link AgrepHeader AgrepUnderline
+
+setlocal conceallevel=3 concealcursor=nvic
 
 let b:current_syntax = "Agrep"
 
