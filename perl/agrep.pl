@@ -1,5 +1,6 @@
 #!/usr/bin/perl
 
+$|++;
 while (<>) {
     next unless /^([^:]*):(\d*):(.*)/;
     ($file, $lnum) = ($1, $2);
