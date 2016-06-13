@@ -7,20 +7,20 @@ if exists("b:current_syntax")
   finish
 endif
 
-syn match	AgrepFileName	"^[^:]\+"	nextgroup=AgrepSeparator contains=AgrepCurMatch
-syn match	AgrepSeparator	":"		nextgroup=AgrepLineNr contained
-syn match	AgrepLineNr	"[^:]\+"	contained
+syn match	AgrepInfo	"^[!-]\d\+[!-]"	conceal nextgroup=AgrepFileName,AgrepPLine,AgrepLineNr
+syn match	AgrepFileName	"[^:]\+"	contained
+syn match	AgrepPLine	" \+"		contained nextgroup=AgrepLineNr
+syn match	AgrepLineNr	"\d\+"		contained
 syn match	AgrepTitle	"\%1l.\+"
-syn match	AgrepCurMatch	"^>"		conceal contained
-exe printf('syn match AgrepMarker "%s" conceal contained', agrep_conceal)
-exe printf('syn match AgrepMatch "%s[^%s]*%s" contains=AgrepMarker', agrep_conceal, agrep_conceal, agrep_conceal)
+exe printf('syn match AgrepMarker "%s" conceal contained', agrep_marker)
+exe printf('syn match AgrepMatch "%s[^%s]*%s" contains=AgrepMarker', agrep_marker, agrep_marker, agrep_marker)
 
 " The default highlighting.
-hi def link AgrepFileName	Directory
+hi def link AgrepFileName	Identifier
 hi def link AgrepLineNr		LineNr
-hi def link AgrepMatch		Special
-hi def      AgrepUnderlined term=underline cterm=underline gui=underline
-hi def link AgrepTitle AgrepUnderlined
+hi def	    AgrepMatch		guibg=#d9d9d9
+hi def link AgrepCurMatch	ColorColumn
+hi def AgrepTitle term=underline cterm=underline gui=underline
 
 setlocal conceallevel=3 concealcursor=nvic
 
