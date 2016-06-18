@@ -1,0 +1,147 @@
+*agrep.txt* Asynchronous grep plugin for Vim version 7.4.1907 or newer.
+
+			    by Ramel Eshed
+
+1. Introduction.........................................|Agrep|
+2. Quick start..........................................|Agrep-quick-start|
+3. Commands.............................................|Agrep-commands|
+4. Settings.............................................|Agrep-settings|
+5. Mappings.............................................|Agrep-Mappings|
+6. About................................................|Agrep-about|
+
+Introduction						*Agrep*
+
+Agrep is:
+
+* Designed for search - Vim's |quickfix| is great, but is not the best choice
+  to use for searching. Agrep uses a simpler mechanism to manage the results
+  (see below) and makes the list of matches very easy to read and navigate.
+
+* Fully asynchronous - Search is done in the background. There is no need to
+  wait for the entire process to finish -the matches are displayed as they are
+  found in the Agrep window and you can start exploring them immediately. You
+  can keep working in Vim as usual while the search is active.
+
+* Fast and lightweight - Most likely the fastest search tool you can get in
+  Vim, or in any other editor. Grep is fast, however, integrating it into other
+  tools should be done carefully. Agrep is optimized to preserve the speed of
+  grep and to keep Vim fully functional while search is running, even for
+  massive searches with thousands of matches.
+
+In most cases, you search for things simply because you need to find
+something(!), with no intention to perform a complex editing tasks on the
+matches or to keep all the matches locations synced with every change you make.
+
+Quickfix (as implied by its name), was created originally to fix errors, so
+keeping the list of matches updated is necessary in this case. The overhead of
+handling this may become noticeable when using quickfix for searching in large
+code bases. Agrep doesn't do all of this so it won't affect Vim's performance
+at all.
+
+===============================================================================
+Quick start						*Agrep-quick-start*	
+
+Agrep takes the same command line arguments as the shell's grep, for example:
+
+    :Agrep -r 'foo.*bar' ~/my_project
+
+It uses -nH flags by default so you don't need to specify them explicitly.
+
+This command will open the Agrep window automatically. Agrep window status line
+will show the search progress (if you don't see it you may need to set
+|laststatus| properly).
+
+Hitting Enter or double-clicking the mouse in the Agrep window will take you to
+the exact location of the match. The previous window will be used to display
+the match.
+
+===============================================================================
+Commands						*Agrep-commands*
+
+The following standard commands are available. These commands are similar to
+the corresponding quickfix commands (cn, cp, etc.):
+
+							*:Anext*
+:[count]Anext		Display the [count] next match.
+
+							*:Aprev*
+:[count]Aprev		Display the [count] previous match.
+
+							*:Anfile*
+:[count]Anfile		Display the first match in the [count] next file.
+
+							*:Apfile*
+:[count]Apfile		Display the last match in the [count] previous file.
+
+							*:Aopen*
+:Aopen			Open the Agrep window.
+
+							*:Aclose*
+:Aclose			Close the Agrep window.
+
+
+Additional commands:
+							*:Astop*
+:Astop			Stop the search and its grep process.
+
+							*:Afilter*
+:Afilter[!] {pattern}	Filter the results, keep only the results matching
+			{pattern}. When [!] is used, keep only the non-matching
+			results. When {pattern} is omitted, the last search
+			pattern will be used.
+
+							*:Affilter*
+:Affilter[!] {pattern}	Like :Afilter but works on the file names.
+
+							*:Aquickfix*
+:Aquickfix		Create a new quickfix list contains all the search
+			matches. This is useful if you want to mark the
+			locations or to use |:cdo| or |:cfdo| commands.
+
+===============================================================================
+Settings						*Agrep-settings*
+
+							*agrep_win_sp_mod*
+g:agrep_win_sp_mod	Sets the modifiers for the |:new| command being used to
+			display the Agrep window. Default is 'bo 18' so the
+			window will be opened at the bottom of the screen and
+			its height will be 18 lines. If you want to open the
+			window at the right side of the screen add this to
+			your .vimrc:
+
+			    let agrep_win_sp_mod = 'botright vert'
+
+							*agrep_default_flags*
+g:agrep_default_flags	Sets the default flags to use with the grep command.
+			Default is '-I --exclude-dir=.{git,svn}' (exclude binary
+			files, .git and .svn directories.
+
+If you want to set some options for the Agrep window only, you can use
+'Agrep' as the autocommands pattern. For example:
+
+    if !exists('s:agrep_cmd')
+      au BufWinEnter Agrep setlocal nornu | setlocal nowrap
+      let s:agrep_cmd = 1
+    endif
+
+===============================================================================
+Mappings						*Agrep-mappings*
+
+Agrep does not come with predefined mappings, but you may find the following
+example useful:
+
+map <Leader>] :<C-U>exe v:count1.(bufwinnr('Agrep') == -1 ? 'cn' : 'Anext')<CR>
+map <Leader>[ :<C-U>exe v:count1.(bufwinnr('Agrep') == -1 ? 'cp' : 'Aprev')<CR>
+
+This will use the same mappings to navigate in the quickfix list and in the
+Agrep window based on if there is an opened Agrep window in the current tab.
+
+
+===============================================================================
+About							*Agrep-about*
+
+Get the latest version or report a bug on GitHub:
+
+http://github.com/ramele/agrep
+
+vim:tw=78:ts=8:ft=help:norl:

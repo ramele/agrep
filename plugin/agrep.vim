@@ -13,8 +13,8 @@ endif
 if !exists('agrep_default_flags')
     let agrep_default_flags = '-I --exclude-dir=.{git,svn}'
 endif
-if !exists('agrep_marker')
-    let agrep_marker = nr2char(172)
+if !exists('agrep_marker') " do not change this
+    let agrep_marker = '¬'
 endif
 
 command! -nargs=+ -complete=file Agrep call Agrep(<q-args>)
@@ -22,13 +22,11 @@ command!          		 Astop call s:stop()
 
 command! -count=1 Anext      call s:goto_match( 1, <count>, 0)
 command! -count=1 Aprev      call s:goto_match(-1, <count>, 0)
-command! -count=1 Afnext     call s:goto_match( 1, <count>, 1)
-command! -count=1 Afprev     call s:goto_match(-1, <count>, 1)
+command! -count=1 Anfile     call s:goto_match( 1, <count>, 1)
+command! -count=1 Apfile     call s:goto_match(-1, <count>, 1)
 command!          Aquickfix  call s:set_qf()
 command!          Aopen      call s:open_window()
 command!          Aclose     call s:close_window()
-command! -count=1 Aolder     echomsg 'This command is not implemented yet...'
-command! -count=1 Anewer     echomsg 'This command is not implemented yet...'
 
 command! -nargs=* -bang Afilter   call s:filer_results(<bang>0, <q-args>, 1)
 command! -nargs=* -bang Affilter  call s:filer_results(<bang>0, <q-args>, 0)
@@ -36,13 +34,14 @@ command! -nargs=* -bang Affilter  call s:filer_results(<bang>0, <q-args>, 0)
 let s:grep_cmd = 'GREP_COLORS="mt=01:sl=:fn=:ln=:se=" grep --color=always --line-buffered -nH'
 
 func! Agrep(args)
-    " let s:rt        = reltime()
+    " let s:rt      = reltime()
     let s:regexp    = matchstr(a:args, '\v^(-\S+\s*)*\zs(".*"|''.*''|\S*)')
     let s:status    = 'Active'
     let s:n_matches = 0
     let s:n_files   = 0
-    let s:current = {'alnum': 1, 'lm': [] , 'lm_i': 0}
+    let s:current   = {'alnum': 1, 'lm': [] , 'lm_i': 0}
     let s:filter    = ''
+    let s:cwd       = getcwd()
     call clearmatches()
 
     if !exists('s:agrep_perl')
@@ -114,7 +113,7 @@ func! s:set_window(title)
     silent %d _
     call setline(1, a:title)
     setlocal nomodifiable
-    call cursor(1, col('$')) " avoid scrolling when using out_io buffer
+    call cursor(1, col('$')) " avoid scrolling
     if winnr() != base_win | wincmd p | endif
 endfunc
 
@@ -123,7 +122,7 @@ func! s:open_window()
     if winnr > 0
 	exe winnr 'wincmd w'
     else
-	exe g:agrep_win_sp_mod 'sp Agrep'
+	exe g:agrep_win_sp_mod 'new +' . s:bufnr . 'b'
     endif
 endfunc
 
@@ -184,7 +183,7 @@ func! s:move_pointer(d)
     if p.lm_i < 0 || p.lm_i >= len(p.lm)
 	let p.alnum += a:d
 	let bl = getbufline(s:bufnr, p.alnum)
-	if bl == [] || p.alnum <= 3 && a:d == -1 " needed for first init...
+	if bl == [] || p.alnum <= 3 && a:d == -1 " needed for first init
 	    let p.alnum -= a:d
 	    let p.lm_i -= a:d
 	    return 0
@@ -215,21 +214,26 @@ func! s:goto_match(d, count, file)
 	endwhile
     else " go directly (enter)
 	let line = getline('.')
-	if line[0] != '-'
+	if line[0] == '-'
+	    let col = col('.') - len(matchstr(line, '\v^[^:]*: '))
+	else
 	    call search('^-')
+	    let col = 0
 	endif
 	let p.alnum = line('.') - 1
 	let p.lm = []
 	let p.file = s:get_file(line('.'))
-	let col = col('.') - len(matchstr(line, '\v^[^:]*: '))
 	call s:move_pointer(1)
 	while p.col + p.len - 1 + 2 * (p.lm_i+1) * len(g:agrep_marker) < col
 		    \ && p.lm_i + 1 <  len(p.lm)
 	    call s:move_pointer(1)
 	endwhile
     endif
-    let saved_so = &so
-    set so=3
+    let reset_so = 0
+    if !&so
+	set so=4
+	let reset_so = 1
+    endif
     let winnr = bufwinnr(s:bufnr)
     if winnr > 0
 	noautocmd exe winnr 'wincmd w'
@@ -244,10 +248,15 @@ func! s:goto_match(d, count, file)
 	    new
 	endif
     endif
-    exe 'e' p.file
+    let file = (p.file[0] == '/' ? p.file : s:cwd . '/' . p.file)
+    if simplify(file) != simplify(expand('%'))
+	exe 'e' file
+    endif
     call cursor(p.lnum, p.col)
     redr
-    let &so = saved_so
+    if reset_so
+	set so=0
+    endif
 endfunc
 
 func! s:filer_results(bang, pattern, filter)

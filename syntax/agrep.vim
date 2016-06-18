@@ -18,8 +18,8 @@ exe printf('syn match AgrepMatch "%s[^%s]*%s" contains=AgrepMarker', agrep_marke
 " The default highlighting.
 hi def link AgrepFileName	Identifier
 hi def link AgrepLineNr		LineNr
-hi def	    AgrepMatch		guibg=#d9d9d9
-hi def link AgrepCurMatch	ColorColumn
+hi def link AgrepMatch		CursorLine
+hi def link AgrepCurMatch	IncSearch
 hi def AgrepTitle term=underline cterm=underline gui=underline
 
 setlocal conceallevel=3 concealcursor=nvic
