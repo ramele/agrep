@@ -1,8 +1,8 @@
 " Agrep - Asynchronous grep plugin for Vim
 " Maintainer:	Ramel Eshed <ramelo1@gmail.com>
 
-if v:version < 704 || v:version == 704 && !has("patch1907")
-    echoerr 'Agrep requires Vim 7.4.1907 or later!'
+if v:version < 704 || v:version == 704 && !has("patch1906")
+    echoerr 'Agrep requires Vim 7.4.1906 or later!'
     fini
 endif
 
@@ -13,9 +13,8 @@ endif
 if !exists('agrep_default_flags')
     let agrep_default_flags = '-I --exclude-dir=.{git,svn}'
 endif
-if !exists('agrep_marker') " do not change this
-    let agrep_marker = '¬'
-endif
+
+let agrep_marker = '¬'
 
 command! -nargs=+ -complete=file Agrep call Agrep(<q-args>)
 command!          		 Astop call s:stop()
@@ -31,10 +30,11 @@ command!          Aclose     call s:close_window()
 command! -nargs=* -bang Afilter   call s:filer_results(<bang>0, <q-args>, 1)
 command! -nargs=* -bang Affilter  call s:filer_results(<bang>0, <q-args>, 0)
 
-let s:grep_cmd = 'GREP_COLORS="mt=01:sl=:fn=:ln=:se=" grep --color=always --line-buffered -nH'
+let s:grep_cmd = 'export GREP_COLORS="mt=01:sl=:fn=:ln=:se="; grep --color=always --line-buffered -nH'
 
 func! Agrep(args)
     " let s:rt      = reltime()
+    " TODO - active search
     let s:regexp    = matchstr(a:args, '\v^(-\S+\s*)*\zs(".*"|''.*''|\S*)')
     let s:status    = 'Active'
     let s:n_matches = 0
@@ -52,9 +52,15 @@ func! Agrep(args)
 
     call s:set_window('grep ' . g:agrep_default_flags . ' ' . a:args . ':')
 
-    let s:agrep_job = job_start(['/bin/bash', '-c', grep_cmd], {
-		\ 'out_io': 'buffer', 'out_buf': s:bufnr, 'out_modifiable': 0,
-		\ 'out_cb': function('s:out_cb'), 'close_cb': function('s:close_cb')})
+    if has('gui_macvim') " TEMP
+	let s:agrep_job = job_start(['/bin/bash', '-c', grep_cmd], {
+		    \ 'out_io': 'buffer', 'out_buf': s:bufnr,
+		    \ 'out_cb': function('s:out_cb'), 'close_cb': function('s:close_cb')})
+    else
+	let s:agrep_job = job_start(['/bin/bash', '-c', grep_cmd], {
+		    \ 'out_io': 'buffer', 'out_buf': s:bufnr, 'out_modifiable': 0,
+		    \ 'out_cb': function('s:out_cb'), 'close_cb': function('s:close_cb')})
+    endif
     let s:timer = timer_start(120, function('s:update_stl'), { 'repeat': -1 })
 endfunc
 
@@ -109,10 +115,14 @@ func! s:set_window(title)
     else
 	call s:open_window()
     endif
-    setlocal modifiable
+    if !has('gui_macvim') " TEMP
+	setlocal modifiable
+    endif
     silent %d _
     call setline(1, a:title)
-    setlocal nomodifiable
+    if !has('gui_macvim') " TEMP
+	setlocal nomodifiable
+    endif
     call cursor(1, col('$')) " avoid scrolling
     if winnr() != base_win | wincmd p | endif
 endfunc
@@ -302,10 +312,14 @@ func! s:filer_results(bang, pattern, filter)
     let s:current.lm = []
     let s:filter = printf('(filter%s: %s)', a:bang ? '(!)' : '', a:pattern)
     call clearmatches()
-    setlocal modifiable
+    if !has('gui_macvim') " TEMP
+	setlocal modifiable
+    endif
     silent 2,$d _
     call setline(2, u_lines)
-    setlocal nomodifiable
+    if !has('gui_macvim') " TEMP
+	setlocal nomodifiable
+    endif
 endfunc
 
 func! s:set_qf()

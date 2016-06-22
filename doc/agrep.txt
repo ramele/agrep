@@ -1,4 +1,4 @@
-*agrep.txt* Asynchronous grep plugin for Vim version 7.4.1907 or newer.
+*agrep.txt* Asynchronous grep plugin for Vim version 7.4.1906 or newer.
 
 			    by Ramel Eshed
 
@@ -9,6 +9,7 @@
 5. Mappings.............................................|Agrep-Mappings|
 6. About................................................|Agrep-about|
 
+===============================================================================
 Introduction						*Agrep*
 
 Agrep is:

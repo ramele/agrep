@@ -1,7 +1,13 @@
 #!/usr/bin/perl
 
 $|++;
+
 $marker = "¬";
+
+$test = `echo 'abc' | grep --color=always abc`;
+chop($test);
+@d = split(/abc/, $test);
+$p = quotemeta($d[0]) . "|" . quotemeta($d[1]);
 
 while (<>) {
     next unless /^([^:]*):(\d*):(.*)/;
@@ -12,7 +18,7 @@ while (<>) {
 	$lines = "";
 	$fcount = 0;
     }
-    @s = split(/\e\[(?:01)?m\e\[K/, $3, -1);
+    @s = split(/$p/, $3, -1);
     $text = join($marker, @s);
     $lcount = int((0+@s) / 2);
     $fcount += $lcount;
