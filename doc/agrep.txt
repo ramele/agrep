@@ -99,6 +99,12 @@ Additional commands:
 			matches. This is useful if you want to mark the
 			locations or to use |:cdo| or |:cfdo| commands.
 
+							*:Anewer*
+:Anewer [count]		Go to the [count] newer entry in the Agrep history.
+
+							*:Aolder*
+:Aolder [count]		Go to the [count] older entry in the Agrep history.
+
 ===============================================================================
 Settings						*Agrep-settings*
 
@@ -116,6 +122,10 @@ g:agrep_win_sp_mod	Sets the modifiers for the |:new| command being used to
 g:agrep_default_flags	Sets the default flags to use with the grep command.
 			Default is '-I --exclude-dir=.{git,svn}' (exclude binary
 			files, .git and .svn directories.
+
+							*agrep_history*
+g:agrep_history		Sets the number of history entries (searches) to save.
+			Default: 5.
 
 If you want to set some options for the Agrep window only, you can use
 'Agrep' as the autocommands pattern. For example:

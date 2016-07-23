@@ -1,11 +1,9 @@
 #Agrep
 ###Asynchronous grep plugin for Vim
 
-__Agrep is:__
-
-* Designed for search - Vim's |quickfix| is great, but is not the best choice
+* Designed for search - Vim's quickfix is great, but is not the best choice
   to use for searching. Agrep uses a simpler mechanism to manage the results
-  (see below) and makes the list of matches very easy to read and navigate.
+  and makes the list of matches very easy to read and navigate.
 
 * Fully asynchronous - Search is done in the background. There is no need to
   wait for the entire process to finish -the matches are displayed as they are

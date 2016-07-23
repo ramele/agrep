@@ -6,23 +6,26 @@ $marker = "¬";
 
 $test = `echo 'abc' | grep --color=always abc`;
 chop($test);
-@d = split(/abc/, $test);
-$p = quotemeta($d[0]) . "|" . quotemeta($d[1]);
+@cc = split(/abc/, $test);
+$color_expr = quotemeta($cc[0]) . "|" . quotemeta($cc[1]);
 
 while (<>) {
-    next unless /^([^:]*):(\d*):(.*)/;
-    ($file, $lnum) = ($1, $2);
-    if ($file ne $prev_file) {
-	print "\n!$fcount!$prev_file:\n$lines" if $prev_file;
-	$prev_file = $file;
-	$lines = "";
+    ($file, $lnum, $raw_text) = /^([^:]+):(\d+):(.*)/;
+    if ($file ne $cur_file) {
+	printf("\n%s%s", $fcount ? "!$fcount!" : "", $lines) if $lines;
+	$cur_file = $file;
+	$lines = $file ? "$file:\n" : "";
 	$fcount = 0;
     }
-    @s = split(/$p/, $3, -1);
+    if (!$file) {
+	$lines .= $_;
+	next;
+    }
+    @s = split(/$color_expr/, $raw_text, -1);
     $text = join($marker, @s);
     $lcount = int((0+@s) / 2);
     $fcount += $lcount;
     $lines .= sprintf("-%d-%6d: %s\n", $lcount, $lnum, $text);
 }
 
-print "\n!$fcount!$prev_file:\n$lines" if $prev_file;
+printf("\n%s%s", $fcount ? "!$fcount!" : "", $lines) if $lines;

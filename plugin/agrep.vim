@@ -13,6 +13,9 @@ endif
 if !exists('agrep_default_flags')
     let agrep_default_flags = '-I --exclude-dir=.{git,svn}'
 endif
+if !exists('agrep_history')
+    let agrep_history = 5
+endif
 
 let agrep_marker = '¬'
 
@@ -27,53 +30,66 @@ command!          Aquickfix  call s:set_qf()
 command!          Aopen      call s:open_window()
 command!          Aclose     call s:close_window()
 
-command! -nargs=* -bang Afilter   call s:filer_results(<bang>0, <q-args>, 1)
-command! -nargs=* -bang Affilter  call s:filer_results(<bang>0, <q-args>, 0)
+command! -nargs=* -bang Afilter   call s:filer_results(<bang>0, <q-args>, 0)
+command! -nargs=* -bang Affilter  call s:filer_results(<bang>0, <q-args>, 1)
+
+command! -count=1 Anewer  call s:history_get( 1, <count>)
+command! -count=1 Aolder  call s:history_get(-1, <count>)
 
 let s:grep_cmd = 'export GREP_COLORS="mt=01:sl=:fn=:ln=:se="; grep --color=always --line-buffered -nH'
 
+let s:status = ''
+let s:history = []
+
 func! Agrep(args)
+    if s:status == 'Active'
+	call s:stop()
+	let s:args = a:args
+	call timer_start(400, function('s:delayed_run'))
+	return
+    endif
+    if s:status != ''
+	call s:history_set()
+    endif
+    let s:hist_ptr = -1
     " let s:rt      = reltime()
-    " TODO - active search
     let s:regexp    = matchstr(a:args, '\v^(-\S+\s*)*\zs(".*"|''.*''|\S*)')
     let s:status    = 'Active'
     let s:n_matches = 0
     let s:n_files   = 0
-    let s:current   = {'alnum': 1, 'lm': [] , 'lm_i': 0}
     let s:filter    = ''
     let s:cwd       = getcwd()
-    call clearmatches()
+    let s:m_lnum    = 1
+    let s:m_ptr     = 0
 
     if !exists('s:agrep_perl')
 	let s:agrep_perl = globpath(&rtp, 'perl/agrep.pl')
     endif
 
-    let grep_cmd = s:grep_cmd . ' ' . g:agrep_default_flags . ' ' . a:args . ' | ' . s:agrep_perl
+    let grep_cmd = s:grep_cmd . ' ' . g:agrep_default_flags . ' ' . a:args . ' |& ' . s:agrep_perl
 
     call s:set_window('grep ' . g:agrep_default_flags . ' ' . a:args . ':')
 
-    if has('gui_macvim') " TEMP
-	let s:agrep_job = job_start(['/bin/bash', '-c', grep_cmd], {
-		    \ 'out_io': 'buffer', 'out_buf': s:bufnr,
-		    \ 'out_cb': function('s:out_cb'), 'close_cb': function('s:close_cb')})
-    else
-	let s:agrep_job = job_start(['/bin/bash', '-c', grep_cmd], {
-		    \ 'out_io': 'buffer', 'out_buf': s:bufnr, 'out_modifiable': 0,
-		    \ 'out_cb': function('s:out_cb'), 'close_cb': function('s:close_cb')})
-    endif
+    let s:agrep_job = job_start(['/bin/bash', '-c', grep_cmd], {
+		\ 'out_io': 'buffer', 'out_buf': s:bufnr, 'out_modifiable': 0,
+		\ 'out_cb': function('s:out_cb'), 'close_cb': function('s:close_cb')})
     let s:timer = timer_start(120, function('s:update_stl'), { 'repeat': -1 })
+endfunc
+
+func! s:delayed_run(timer)
+    call Agrep(s:args)
 endfunc
 
 func! s:out_cb(channel, msg)
     if a:msg[0] == '!'
-	let s:n_matches += matchstr(a:msg, '\v^!\zs\d+')
+	let s:n_matches += matchstr(a:msg, '^!\zs\d\+')
 	let s:n_files += 1
     endif
 endfunc
 
 func! s:close_cb(channel)
     " out_cb may still be active at this point
-    call timer_start(200, function('s:final_close'))
+    call timer_start(100, function('s:final_close'))
 endfunc
 
 func! s:final_close(timer)
@@ -115,14 +131,11 @@ func! s:set_window(title)
     else
 	call s:open_window()
     endif
-    if !has('gui_macvim') " TEMP
-	setlocal modifiable
-    endif
+    call clearmatches()
+    setlocal modifiable
     silent %d _
     call setline(1, a:title)
-    if !has('gui_macvim') " TEMP
-	setlocal nomodifiable
-    endif
+    setlocal nomodifiable
     call cursor(1, col('$')) " avoid scrolling
     if winnr() != base_win | wincmd p | endif
 endfunc
@@ -143,102 +156,92 @@ func! s:close_window()
     endif
 endfunc
 
-func! s:hl_cur_match()
+func! s:hl_cur_match(lnum, col, len)
     if !exists('b:current_syntax')
 	return
     endif
     call clearmatches()
-    call matchaddpos('AgrepCurMatch', [[s:current.alnum, col('.'), s:current.len]])
+    call matchaddpos('AgrepCurMatch', [[a:lnum, a:col, a:len]])
 endfunc
 
-func! s:extract_fline(line)
-    let ml = matchlist(a:line, '\v^!(\d*)!(.*):$')
-    return {'n_matches': ml[1], 'file': ml[2]}
+func! s:get_match()
+    let m = len(g:agrep_marker)
+    let lnum = str2nr(matchstr(s:m_line[0], '\d\+\ze:'))
+    let s0 = matchend(s:m_line[0], ': ')
+    let s = match(s:m_line[0], g:agrep_marker, s0, s:m_ptr*2-1)
+    let e = matchend(s:m_line[0], g:agrep_marker, s0, s:m_ptr*2)
+    return { 'm_col': s+m+1, 'len': e-s-2*m,
+	    \ 'lnum': lnum, 'col': s+m-s0+1-(s:m_ptr*2-1)*m }
 endfunc
 
-func! s:extract_mline(line)
-    let ml = matchlist(a:line, '\v^-(\d*)-\s*(\d+): (.*)')
-    return {'n_matches': ml[1], 'lnum': ml[2], 'text': ml[3]}
+func! s:get_count()
+    return str2nr(matchstr(s:m_line[0], '^[-!]\zs\d\+'))
 endfunc
 
-func! s:get_file(lnum)
-    let lnum = a:lnum
-    let line = getbufline(s:bufnr, lnum)[0]
-    while line[0] != '!'
-	let  lnum -= 1
-	let line = getbufline(s:bufnr, lnum)[0]
+func! s:goto_symbol(s, d)
+    while 1
+	let s:m_lnum += a:d
+	let s:m_line = getbufline(s:bufnr, s:m_lnum)
+	if s:m_line == [] || s:m_line[0][0] == a:s
+	    break
+	endif
     endwhile
-    return s:extract_fline(line).file
+    return s:m_line != []
 endfunc
 
-func! s:get_line_matches(line)
-    let sp  = split(a:line, g:agrep_marker, 1)
-    let ret = []
-    let alen = 0
-    let m   = 0
-    for s in sp
-	let len = len(s)
-	if m
-	    call add(ret, [alen+1, len])
-	endif
-	let alen += len
-	let m = !m
-    endfor
-    return ret
-endfunc
-
-func! s:move_pointer(d)
-    let p = s:current
-    let p.lm_i += a:d
-    if p.lm_i < 0 || p.lm_i >= len(p.lm)
-	let p.alnum += a:d
-	let bl = getbufline(s:bufnr, p.alnum)
-	if bl == [] || p.alnum <= 3 && a:d == -1 " needed for first init
-	    let p.alnum -= a:d
-	    let p.lm_i -= a:d
-	    return 0
-	endif
-	if bl[0][0] == '!' || bl[0] == ''
-	    let p.alnum += 2 * a:d
-	    let bl = getbufline(s:bufnr, p.alnum)
-	    let p.file = s:get_file(p.alnum)
-	endif
-	let p.e_mline = s:extract_mline(bl[0])
-	let p.lm = s:get_line_matches(p.e_mline.text)
-	let p.lm_i = (a:d == 1 ? 0 : len(p.lm)-1)
-	let p.lnum = p.e_mline.lnum
-    endif
-    let [p.col, p.len] = p.lm[p.lm_i]
-    return 1
+func! s:get_file()
+    let lnum = s:m_lnum - 1
+    while getbufline(s:bufnr, lnum)[0][0] != '!'
+	let lnum -= 1
+    endwhile
+    return matchstr(getbufline(s:bufnr, lnum)[0], '^!\d\+!\zs.*\ze:$')
 endfunc
 
 func! s:goto_match(d, count, file)
-    if !s:n_matches | return | endif
-    let p = s:current
-    if a:d " match or file
-	let prev_file = get(p, 'file', '')
-	let n = a:count
-	while n && s:move_pointer(a:d)
-	    let n -= (a:file ? (prev_file != p.file) : 1)
-	    let prev_file = p.file
-	endwhile
-    else " go directly (enter)
-	let line = getline('.')
-	if line[0] == '-'
-	    let col = col('.') - len(matchstr(line, '\v^[^:]*: '))
-	else
-	    call search('^-')
-	    let col = 0
-	endif
-	let p.alnum = line('.') - 1
-	let p.lm = []
-	let p.file = s:get_file(line('.'))
-	call s:move_pointer(1)
-	while p.col + p.len - 1 + 2 * (p.lm_i+1) * len(g:agrep_marker) < col
-		    \ && p.lm_i + 1 <  len(p.lm)
-	    call s:move_pointer(1)
-	endwhile
+    let s:m_lnum -= 1
+    if !s:goto_symbol('-', 1)
+	return
     endif
+
+    if a:d " relative location
+	let a_count = a:count
+	if a:file
+	    while a_count && s:goto_symbol('!', a:d)
+		let a_count -= 1
+	    endwhile
+	    if a_count
+		call s:goto_symbol('!', a:d * -1)
+	    endif
+	    let a_count = 1
+	    let m_count = 0
+	else
+	    let m_count = (a:d == 1) ? s:get_count() - s:m_ptr
+			\ : s:m_ptr - 1
+	endif
+
+	while a_count > m_count && s:goto_symbol('-', a:d)
+	    let m_count += s:get_count()
+	endwhile
+	if a_count > m_count
+	    call s:goto_symbol('-', a:d * -1)
+	    let s:m_ptr = (a:d == 1) ? s:get_count() : 1
+	else
+	    let s:m_ptr = (a:d == 1) ? s:get_count() - m_count + a_count 
+			\ : m_count - a_count + 1
+	endif
+	let match = s:get_match()
+    else " go directly (enter)
+	let s:m_lnum = line('.') -1
+	call s:goto_symbol('-', 1)
+	let max = s:get_count()
+	for s:m_ptr in range(1, max)
+	    let match = s:get_match()
+	    if col('.') < match.m_col + match.len
+		break
+	    endif
+	endfor
+    endif
+
     let reset_so = 0
     if !&so
 	set so=4
@@ -247,91 +250,137 @@ func! s:goto_match(d, count, file)
     let winnr = bufwinnr(s:bufnr)
     if winnr > 0
 	noautocmd exe winnr 'wincmd w'
-	call cursor(p.alnum, 1)
-	for i in range(0, p.lm_i)
-	    call search(printf('%s\zs[^%s]*%s', g:agrep_marker, g:agrep_marker, g:agrep_marker))
-	endfor
-	call s:hl_cur_match()
+	if a:d
+	    call cursor(s:m_lnum, match.m_col)
+	endif
+	call s:hl_cur_match(s:m_lnum, match.m_col, match.len)
 	if winnr('$') > 1
 	    wincmd p
 	else
-	    new
+	    exe g:agrep_win_sp_mod 'new'
 	endif
     endif
-    let file = (p.file[0] == '/' ? p.file : s:cwd . '/' . p.file)
+    let file = s:get_file()
+    let file = (file[0] == '/' ? file : s:cwd . '/' . file)
     if simplify(file) != simplify(expand('%'))
 	exe 'e' file
     endif
-    call cursor(p.lnum, p.col)
+    call cursor(match.lnum, match.col)
     redr
     if reset_so
 	set so=0
     endif
 endfunc
 
-func! s:filer_results(bang, pattern, filter)
+func! s:filer_results(bang, pattern, ffilter)
+    call s:history_set()
     call s:open_window()
     let pattern     = (a:pattern == '' ? @/ : a:pattern)
     let lines       = getline(2,'$')
+    call add(lines, '')
     let s:n_matches = 0
     let s:n_files   = 0
-    let u_lines     = []
-    for l in lines
-	if l == '' | continue | endif
-	let is_file = (l[0] == '!' ? 1 : 0)
-	if is_file
-	    let fline = l
-	    let fadded = 0
-	    let fvalid = 1
-	    if a:filter == 0
-		let el = s:extract_fline(l)
-		if el.file =~ pattern && a:bang || el.file !~ pattern && !a:bang
-		    let fvalid = 0
+    let f_lines     = []
+
+    if a:ffilter == 1
+	for l in lines
+	    if l == ''
+		continue
+	    elseif l[0] == '!'
+		let file = matchstr(l, '^!\d\+!\zs.*\ze:$')
+		let valid = 0
+		if file =~ pattern && !a:bang || file !~ pattern && a:bang
+		    let valid = 1
+		    let s:n_files += 1
+		    let s:n_matches += matchstr(l, '^!\zs\d\+')
+		    call add(f_lines, '')
+		    call add(f_lines, l)
+		endif
+	    elseif l[0] == '-' && valid
+		call add(f_lines, l)
+	    endif
+	endfor
+    else
+	let file_ptr = 0
+	for l in lines
+	    if l == ''
+		if file_ptr
+		    let f_lines[file_ptr] = '!' . fcount . '!' . file
+		    let s:n_matches += fcount
+		    let s:n_files += 1
+		    let file_ptr = 0
+		endif
+	    elseif l[0] == '!'
+		let file = matchstr(l, '^!\d\+!\zs.*')
+	    elseif l[0] == '-'
+		let line = matchstr(l, ': \zs.*')
+		let line = substitute(line, g:agrep_marker, '', 'g')
+		if line =~ pattern && !a:bang || line !~ pattern && a:bang
+		    if !file_ptr
+			call add(f_lines, '')
+			call add(f_lines, '')
+			let file_ptr = len(f_lines) - 1
+			let fcount = 0
+		    endif
+		    let fcount += matchstr(l, '^-\zs\d\+')
+		    call add(f_lines, l)
 		endif
 	    endif
-	else
-	    if !fvalid | continue | endif
-	    let em = s:extract_mline(l)
-	    if a:filter == 1
-		let str = substitute(em.text, g:agrep_marker, '', 'g')
-		if str =~ pattern && a:bang || str !~ pattern && !a:bang
-		    continue
-		endif
-	    endif
-	    if !fadded
-		call add(u_lines, '')
-		call add(u_lines, fline)
-		let fadded = 1
-		let s:n_files += 1
-	    endif
-	    let s:n_matches += em.n_matches
-	    call add(u_lines, l)
-	endif
-    endfor
-    let s:current.alnum = 1
-    let s:current.lm = []
+	endfor
+    endif
+
+    let s:m_lnum = 1
+    let s:m_ptr  = 0
     let s:filter = printf('(filter%s: %s)', a:bang ? '(!)' : '', a:pattern)
+    let s:hist_ptr = -1
     call clearmatches()
-    if !has('gui_macvim') " TEMP
-	setlocal modifiable
-    endif
+    setlocal modifiable
     silent 2,$d _
-    call setline(2, u_lines)
-    if !has('gui_macvim') " TEMP
-	setlocal nomodifiable
-    endif
+    call setline(2, f_lines)
+    setlocal nomodifiable
 endfunc
 
 func! s:set_qf()
-    let saved_cur = copy(s:current)
-    let p         = s:current
-    let p.alnum   = 1
-    let p.lm      = []
-    let qf        = []
-    while s:move_pointer(1)
-	call add(qf, {'filename': p.file, 'lnum': p.lnum,
-		    \ 'col': p.col, 'text': p.e_mline.text})
-    endwhile
-    let s:current = saved_cur
+    let lines = getbufline(s:bufnr, 2, '$')
+    let qf    = []
+    for l in lines
+	if l == ''
+	    continue
+	elseif l[0] == '!'
+	    let file = matchstr(l, '^!\d\+!\zs.*\ze:$')
+	elseif l[0] == '-'
+	    call add(qf, {'filename': file,
+			\ 'lnum': matchstr(l, '\d\+\ze:'),
+			\ 'text': matchstr(l, ': \zs.*')})
+	endif
+    endfor
     call setqflist(qf)
+endfunc
+
+func! s:history_set()
+    if s:hist_ptr > -1 | return | endif
+    if len(s:history) == g:agrep_history
+	let s:history = s:history[1:]
+    endif
+    let hist_entry = { 'lines' : getbufline(s:bufnr, 1, '$'),
+		\ 'context' : [s:regexp, s:status, s:n_matches, s:n_files,
+		\ s:filter, s:cwd, s:m_lnum, s:m_ptr] }
+    call add(s:history, hist_entry)
+    let s:hist_ptr = len(s:history) - 1
+endfunc
+
+func! s:history_get(d, count)
+    call s:history_set()
+    let s:hist_ptr += a:count * a:d
+    if s:hist_ptr >= len(s:history) | let s:hist_ptr = len(s:history) - 1 | endif
+    if s:hist_ptr < 0 | let s:hist_ptr = 0 | endif
+    call s:open_window()
+    call clearmatches()
+    setlocal modifiable
+    silent %d _
+    let f_lines = s:history[s:hist_ptr].lines
+    let [s:regexp, s:status, s:n_matches, s:n_files, s:filter,
+		\ s:cwd, s:m_lnum, s:m_ptr] = s:history[s:hist_ptr].context
+    call setline(1, f_lines)
+    setlocal nomodifiable
 endfunc
