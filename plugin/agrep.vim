@@ -66,7 +66,7 @@ func! Agrep(args)
 	let s:agrep_perl = globpath(&rtp, 'perl/agrep.pl')
     endif
 
-    let grep_cmd = s:grep_cmd . ' ' . g:agrep_default_flags . ' ' . a:args . ' |& ' . s:agrep_perl
+    let grep_cmd = s:grep_cmd . ' ' . g:agrep_default_flags . ' ' . a:args . ' 2>&1 | ' . s:agrep_perl
 
     call s:set_window('grep ' . g:agrep_default_flags . ' ' . a:args . ':')
 
