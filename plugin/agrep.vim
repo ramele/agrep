@@ -36,7 +36,8 @@ command! -nargs=* -bang Affilter  call s:filer_results(<bang>0, <q-args>, 1)
 command! -count=1 Anewer  call s:history_get( 1, <count>)
 command! -count=1 Aolder  call s:history_get(-1, <count>)
 
-let s:grep_cmd = 'export GREP_COLORS="mt=01:sl=:fn=:ln=:se="; grep --color=always --line-buffered -nH'
+let s:grep_cmd = 'export GREP_COLORS="mt=01:sl=:fn=:ln=:se=";
+		\ grep --color=always --line-buffered -nH'
 
 let s:status = ''
 let s:history = []
@@ -44,8 +45,7 @@ let s:history = []
 func! Agrep(args)
     if s:status == 'Active'
 	call s:stop()
-	let s:args = a:args
-	call timer_start(400, function('s:delayed_run'))
+	call timer_start(400, function('s:delayed_run', [a:args]))
 	return
     endif
     if s:status != ''
@@ -53,7 +53,6 @@ func! Agrep(args)
     endif
     let s:hist_ptr = -1
     " let s:rt      = reltime()
-    let s:regexp    = matchstr(a:args, '\v^(-\S+\s*)*\zs(".*"|''.*''|\S*)')
     let s:status    = 'Active'
     let s:n_matches = 0
     let s:n_files   = 0
@@ -64,11 +63,32 @@ func! Agrep(args)
 
     if !exists('s:agrep_perl')
 	let s:agrep_perl = globpath(&rtp, 'perl/agrep.pl')
+	let s:exec_file = substitute(s:agrep_perl, 'perl/agrep.pl', '.exec_long_line.sh', '')
     endif
 
-    let grep_cmd = s:grep_cmd . ' ' . g:agrep_default_flags . ' ' . a:args . ' 2>&1 | ' . s:agrep_perl
+    if type(a:args) == type([])
+        " When args is a list, items are taken as follows:
+        " args[0]: regexp
+        " args[1]: list of files (e.g. ['file1', 'file2', ...])
+        " args[2]: title for the agrep window (replacing the default one)
+        " This is useful for integrating Agrep into a project manager
+        let s:regexp = a:args[0]
+        let grep_cmd = s:grep_cmd . ' ' . g:agrep_default_flags . ' ' . a:args[0] . ' ' . join(a:args[1]) . ' 2>&1 | ' . s:agrep_perl
+        call s:set_window(a:args[2] . ':')
+    else
+        let s:regexp    = matchstr(a:args, '\v^(-\S+\s*)*\zs(".*"|''.*''|\S*)')
+        let grep_cmd = s:grep_cmd . ' ' . g:agrep_default_flags . ' ' . a:args . ' 2>&1 | ' . s:agrep_perl
+        call s:set_window('grep ' . g:agrep_default_flags . ' ' . a:args . ':')
+    endif
 
-    call s:set_window('grep ' . g:agrep_default_flags . ' ' . a:args . ':')
+    if len(grep_cmd) > 400 "?
+        call writefile([grep_cmd], s:exec_file)
+        let perm = getfperm(s:exec_file)
+        if perm[2] != 'x'
+            call setfperm(s:exec_file, 'rwx' . perm[3:])
+        endif
+        let grep_cmd = s:exec_file
+    endif
 
     let s:agrep_job = job_start(['/bin/bash', '-c', grep_cmd], {
 		\ 'out_io': 'buffer', 'out_buf': s:bufnr, 'out_modifiable': 0,
@@ -76,8 +96,8 @@ func! Agrep(args)
     let s:timer = timer_start(120, function('s:update_stl'), { 'repeat': -1 })
 endfunc
 
-func! s:delayed_run(timer)
-    call Agrep(s:args)
+func! s:delayed_run(args, timer)
+    call Agrep(a:args)
 endfunc
 
 func! s:out_cb(channel, msg)
@@ -360,7 +380,7 @@ endfunc
 func! s:history_set()
     if s:hist_ptr > -1 | return | endif
     if len(s:history) == g:agrep_history
-	let s:history = s:history[1:]
+	unlet s:history[0]
     endif
     let hist_entry = { 'lines' : getbufline(s:bufnr, 1, '$'),
 		\ 'context' : [s:regexp, s:status, s:n_matches, s:n_files,
