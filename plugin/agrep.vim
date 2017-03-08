@@ -66,20 +66,17 @@ func! Agrep(args)
 	let s:exec_file = substitute(s:agrep_perl, 'perl/agrep.pl', '.exec_long_line.sh', '')
     endif
 
-    if type(a:args) == type([])
-        " When args is a list, items are taken as follows:
-        " args[0]: regexp
-        " args[1]: list of files (e.g. ['file1', 'file2', ...])
-        " args[2]: title for the agrep window (replacing the default one)
-        " This is useful for integrating Agrep into a project manager
-        let s:regexp = a:args[0]
-        let grep_cmd = s:grep_cmd . ' ' . g:agrep_default_flags . ' ' . a:args[0] . ' ' . join(a:args[1]) . ' 2>&1 | ' . s:agrep_perl
-        call s:set_window(a:args[2] . ':')
+    if type(a:args) == type({})
+        let s:regexp = a:args.regexp
+        let flags = (get(a:args, 'use_defaults', 1) ? g:agrep_default_flags : '') . ' ' . get(a:args, 'flags', '')
+        let grep_cmd = s:grep_cmd . ' ' . flags . ' ' . a:args.regexp . ' ' . join(a:args.files) . ' 2>&1 | ' . s:agrep_perl
+        let title = get(a:args, 'title', 'grep ' . flags . ' ' . a:args.regexp)
     else
         let s:regexp    = matchstr(a:args, '\v^(-\S+\s*)*\zs(".*"|''.*''|\S*)')
         let grep_cmd = s:grep_cmd . ' ' . g:agrep_default_flags . ' ' . a:args . ' 2>&1 | ' . s:agrep_perl
-        call s:set_window('grep ' . g:agrep_default_flags . ' ' . a:args . ':')
+        let title = 'grep ' . g:agrep_default_flags . ' ' . a:args
     endif
+    call s:set_window(title . ':')
 
     if len(grep_cmd) > 400 "?
         call writefile([grep_cmd], s:exec_file)
@@ -93,7 +90,7 @@ func! Agrep(args)
     let s:agrep_job = job_start(['/bin/bash', '-c', grep_cmd], {
 		\ 'out_io': 'buffer', 'out_buf': s:bufnr, 'out_modifiable': 0,
 		\ 'out_cb': function('s:out_cb'), 'close_cb': function('s:close_cb')})
-    let s:timer = timer_start(120, function('s:update_stl'), { 'repeat': -1 })
+    let s:stl_timer = timer_start(200, function('s:update_stl'), { 'repeat': -1 })
 endfunc
 
 func! s:delayed_run(args, timer)
@@ -116,7 +113,7 @@ func! s:final_close(timer)
     if s:status == 'Active'
 	let s:status = 'Done'
     endif
-    call timer_stop(s:timer)
+    call timer_stop(s:stl_timer)
     call s:update_stl(0)
     " echo reltimestr(reltime(s:rt))
 endfunc
@@ -129,7 +126,9 @@ func! s:stop()
 endfunc
 
 func! s:update_stl(timer)
-    call setbufvar('Agrep', '&stl', '%!Agrep_stl()')
+    if bufwinnr(s:bufnr) > 0 " to avoid blinking
+        call setbufvar(s:bufnr, '&stl', '%!Agrep_stl()')
+    endif
 endfunc
 
 func! Agrep_stl()
@@ -139,7 +138,7 @@ endfunc
 
 func! s:set_window(title)
     let base_win = winnr()
-    if bufnr('Agrep') < 0
+    if bufnr('^Agrep$') < 0
 	exe g:agrep_win_sp_mod 'new Agrep'
 	let s:bufnr = bufnr('%')
 	setlocal buftype=nofile bufhidden=hide noswapfile
@@ -282,7 +281,7 @@ func! s:goto_match(d, count, file)
     endif
     let file = s:get_file()
     let file = (file[0] == '/' ? file : s:cwd . '/' . file)
-    if simplify(file) != simplify(expand('%'))
+    if resolve(file) != resolve(expand('%'))
 	exe 'e' file
     endif
     call cursor(match.lnum, match.col)
