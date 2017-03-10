@@ -10,6 +10,9 @@ endif
 if !exists('agrep_win_sp_mod')
     let agrep_win_sp_mod = 'bo 18'
 endif
+if !exists('agrep_results_win_sp_mod')
+    let agrep_results_win_sp_mod = ''
+endif
 if !exists('agrep_default_flags')
     let agrep_default_flags = '-I --exclude-dir=.{git,svn}'
 endif
@@ -41,6 +44,7 @@ let s:grep_cmd = 'export GREP_COLORS="mt=01:sl=:fn=:ln=:se=";
 
 let s:status = ''
 let s:history = []
+let s:results_win_id = -1
 
 func! Agrep(args)
     if s:status == 'Active'
@@ -139,6 +143,9 @@ endfunc
 func! s:set_window(title)
     let base_win = winnr()
     if bufnr('^Agrep$') < 0
+        if g:agrep_results_win_sp_mod == ''
+            let s:results_win_id = win_getid()
+        endif
 	exe g:agrep_win_sp_mod 'new Agrep'
 	let s:bufnr = bufnr('%')
 	setlocal buftype=nofile bufhidden=hide noswapfile
@@ -163,7 +170,10 @@ func! s:open_window()
     let winnr = bufwinnr(s:bufnr)
     if winnr > 0
 	exe winnr 'wincmd w'
-    else
+    elseif exists('s:bufnr')
+        if g:agrep_results_win_sp_mod == ''
+            let s:results_win_id = win_getid()
+        endif
 	exe g:agrep_win_sp_mod 'new +' . s:bufnr . 'b'
     endif
 endfunc
@@ -266,19 +276,24 @@ func! s:goto_match(d, count, file)
 	set so=4
 	let reset_so = 1
     endif
-    let winnr = bufwinnr(s:bufnr)
-    if winnr > 0
-	noautocmd exe winnr 'wincmd w'
+    let agrep_winnr = bufwinnr(s:bufnr)
+    if agrep_winnr > 0
+	noautocmd exe agrep_winnr 'wincmd w'
 	if a:d
 	    call cursor(s:m_lnum, match.m_col)
 	endif
 	call s:hl_cur_match(s:m_lnum, match.m_col, match.len)
-	if winnr('$') > 1
-	    wincmd p
-	else
-	    exe g:agrep_win_sp_mod 'new'
-	endif
+        wincmd p
     endif
+    if !win_gotoid(s:results_win_id)
+        if g:agrep_results_win_sp_mod != ''
+            exe g:agrep_results_win_sp_mod 'new'
+        elseif winnr() == agrep_winnr
+            new
+        endif
+        let s:results_win_id = win_getid()
+    endif
+
     let file = s:get_file()
     let file = (file[0] == '/' ? file : s:cwd . '/' . file)
     if resolve(file) != resolve(expand('%'))

@@ -53,8 +53,7 @@ will show the search progress (if you don't see it you may need to set
 |laststatus| properly).
 
 Hitting Enter or double-clicking the mouse in the Agrep window will take you to
-the exact location of the match. The previous window will be used to display
-the match.
+the exact location of the match. 
 
 ===============================================================================
 Commands						*Agrep-commands*
@@ -118,6 +117,12 @@ g:agrep_win_sp_mod	Sets the modifiers for the |:new| command being used to
 
 			    let agrep_win_sp_mod = 'botright vert'
 
+						     *agrep_results_win_sp_mod*
+g:agrep_results_win_sp_mod
+                        Set this option with the appropriate split modifiers
+                        if you want Agrep to open a new window before jumping
+                        to a match. When this option is empty (Default) the
+                        previous window will be used.
 							*agrep_default_flags*
 g:agrep_default_flags	Sets the default flags to use with the grep command.
 			Default is '-I --exclude-dir=.{git,svn}' (exclude binary
