@@ -44,7 +44,6 @@ let s:grep_cmd = 'export GREP_COLORS="mt=01:sl=:fn=:ln=:se=";
 
 let s:status = ''
 let s:history = []
-let s:results_win_id = -1
 
 func! Agrep(args)
     if s:status == 'Active'
@@ -140,17 +139,22 @@ func! Agrep_stl()
 		\ '%=%-14{"' . (s:n_matches . ' / ' . s:n_files) . '"}%4p%%'
 endfunc
 
+func! s:set_win_local_options()
+    setlocal conceallevel=3 concealcursor=nvic
+    setlocal statusline=%!Agrep_stl()
+endfunc
+
 func! s:set_window(title)
     let base_win = winnr()
     if bufnr('^Agrep$') < 0
         if g:agrep_results_win_sp_mod == ''
-            let s:results_win_id = win_getid()
+            let t:results_win_id = win_getid()
         endif
 	exe g:agrep_win_sp_mod 'new Agrep'
 	let s:bufnr = bufnr('%')
 	setlocal buftype=nofile bufhidden=hide noswapfile
 	setlocal filetype=agrep
-	setlocal statusline=%!Agrep_stl()
+        call s:set_win_local_options()
 
 	map <silent> <buffer> <CR>	    :call <SID>goto_match(0, 1, 0)<CR>
 	map <silent> <buffer> <2-LeftMouse> :call <SID>goto_match(0, 1, 0)<CR>
@@ -172,9 +176,10 @@ func! s:open_window()
 	exe winnr 'wincmd w'
     elseif exists('s:bufnr')
         if g:agrep_results_win_sp_mod == ''
-            let s:results_win_id = win_getid()
+            let t:results_win_id = win_getid()
         endif
 	exe g:agrep_win_sp_mod 'new +' . s:bufnr . 'b'
+        call s:set_win_local_options()
     endif
 endfunc
 
@@ -285,13 +290,13 @@ func! s:goto_match(d, count, file)
 	call s:hl_cur_match(s:m_lnum, match.m_col, match.len)
         wincmd p
     endif
-    if !win_gotoid(s:results_win_id)
+    if !(exists('t:results_win_id') && win_gotoid(t:results_win_id))
         if g:agrep_results_win_sp_mod != ''
             exe g:agrep_results_win_sp_mod 'new'
         elseif winnr() == agrep_winnr
             new
         endif
-        let s:results_win_id = win_getid()
+        let t:results_win_id = win_getid()
     endif
 
     let file = s:get_file()

@@ -22,8 +22,6 @@ hi def link AgrepMatch		CursorLine
 hi def link AgrepCurMatch	IncSearch
 hi def AgrepTitle term=underline cterm=underline gui=underline
 
-setlocal conceallevel=3 concealcursor=nvic
-
 let b:current_syntax = "Agrep"
 
 " vim: ts=8
