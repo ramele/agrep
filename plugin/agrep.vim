@@ -146,7 +146,7 @@ endfunc
 
 func! s:set_window(title)
     let base_win = winnr()
-    if bufnr('^Agrep$') < 0
+    if !buflisted('Agrep')
         if g:agrep_results_win_sp_mod == ''
             let t:results_win_id = win_getid()
         endif
