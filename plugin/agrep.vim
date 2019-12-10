@@ -155,6 +155,7 @@ func! s:set_window(title)
 	setlocal buftype=nofile bufhidden=hide noswapfile
 	setlocal filetype=agrep
         call s:set_win_local_options()
+        autocmd BufWinLeave <buffer> call clearmatches()
 
 	map <silent> <buffer> <CR>	    :call <SID>goto_match(0, 1, 0)<CR>
 	map <silent> <buffer> <2-LeftMouse> :call <SID>goto_match(0, 1, 0)<CR>
@@ -276,11 +277,11 @@ func! s:goto_match(d, count, file)
 	endfor
     endif
 
-    let reset_so = 0
-    if !&so
-	set so=4
-	let reset_so = 1
-    endif
+    " let reset_so = 0
+    " if !&so
+	" set so=4
+	" let reset_so = 1
+    " endif
     let agrep_winnr = bufwinnr(s:bufnr)
     if agrep_winnr > 0
 	noautocmd exe agrep_winnr 'wincmd w'
@@ -306,9 +307,9 @@ func! s:goto_match(d, count, file)
     endif
     call cursor(match.lnum, match.col)
     redr
-    if reset_so
-	set so=0
-    endif
+    " if reset_so
+	" set so=0
+    " endif
 endfunc
 
 func! s:filer_results(bang, pattern, ffilter)
